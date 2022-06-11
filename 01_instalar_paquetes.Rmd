@@ -45,3 +45,25 @@ Una forma resumida de emplear una función determinada de un paquete, sin la nec
 ```{r instalpkg}
 pacman::p_load(raster, rasterVis, terra, rgdal, tidyverse, sf)
 ```
+
+## Funciones dentro de los paquetes
+
+Una forma práctica de explotar todas las funciones dentro de un determinado paquete es empleando la siguiente sintaxis:
+
+```{r listarPaquetes, eval=F}
+head(ls("package:raster"))
+```
+
+esto listará toas las funciones disponibles a la fecha en el paquete **raster**.
+
+![Lista de las funciones disponibles en el paquete raster](img/ls_pkg.png)
+
+También se puede en ver una ulr local donde se puede ver el sistema de ayuda de cada función:
+
+```{r listpkgWeb, eval=F}
+help(package = raster)
+```
+
+![Lista de las funciones y sistema de ayuda de los paquetes](img/ls_pkg_web.png)
+
+A la fecha de hoy, el paquete raster dispone con 280 funciones.
