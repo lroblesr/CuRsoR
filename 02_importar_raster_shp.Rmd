@@ -1,0 +1,108 @@
+---
+title: "Importar datos tipo shapefile y raster"
+author: "rr@l"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T, warning = F, message = F, eval = T)
+```
+
+## Cargar paquetes
+
+Cargamos el paquete raster, esto permite
+```{r loadpkg}
+pacman::p_load(raster, rgdal, tidyverse, rasterVis, sf)
+```
+
+## Cambiar directorio de trabajo
+
+La siguiente linea permite cambiar el *prompt* de R (*Working Directory*) donde se encuentra el *stript*, es importante instalar primero el paquete **rstudioapi**
+
+```{r wd}
+# Change the work directory to the folder containing the script
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+```
+
+## Shapefile
+Dentro de los archivos *shapefile* hay tres archivos importantes asociados con todos y cada uno de los archivos:
+
+* *.shp: Contiene la geometría para todas las características.
+* *.shx: Indexa la geometría.
+* *.dbf: Almacena atributos de características en un formato tabular.
+
+Para la lectura empleando la función *shapefile* del paquete raster, la sintaxis es la siguiente:
+
+```{r readSHP}
+shp_paises <- shapefile("inputs/shape/Paises/paises.shp")
+```
+Se puede verificar la lista de objetos en la consola de R usando la función `r ls()`. Para obtener más información del objeto y los atributos de **shp_paises** se puede utilizar las siguientes funciones.
+
+```{r atributoshp, eval=F}
+class(shp_paises)
+names(shp_paises)
+str(shp_paises)
+View(shp_paises)
+View(shp_paises@data)
+```
+
+Para su visualización, se puede utilizar la función *plot*.
+```{r plotSHP}
+plot(shp_paises)
+```
+
+Se puede acceder a los paises directamente usando el numero de fila correspondiente al país. Por ejemplo Perú
+
+```{r perushp}
+shp_peru <- shp_paises[173, ]
+plot(shp_peru)
+proj4string(shp_peru)
+crs(shp_peru)
+```
+
+También se puede usar la función `r readOGR()` del paquete **rgdal** de la forma:
+
+```{r readshprgdal}
+shp_lima <- 'inputs/shape/Lima/lima_distritos.shp' %>%
+            readOGR()
+plot(shp_lima)
+```
+Se puede agregar argumentos extras que permite mejorar la visualización del plot
+
+```{r plotSHP_args}
+plot(shp, col = "#f2efef", bg = "skyblue", lwd = 0.25, border = 1,
+    main = "Departamento de Lima", xlab = "Longitud", ylab = "Latitud")
+axis(1)
+axis(2)
+box(col = "black")
+# spplot(shp_lima)
+```
+
+Superposición de polígonos
+```{r superposicion}
+# %>% spTransform(CRSobj = crs(shp_peru))
+plot(shp_peru)
+extent(shp_lima)
+plot(shp_lima, add = T)
+```
+
+Por otra parte, también se puede usar el paquete **sf**
+
+
+```{r sf}
+shp_lima <- st_read("inputs/shape/Lima/lima_distritos.shp")
+plot(shp_lima)
+```
+
+## Tarea
+Revisar las siguiente función:
+
+* *readShapePoly()* del paquete **maptools**
+
+
+## Referencias
+
+* https://www.neonscience.org/resources/learning-hub/tutorials/dc-open-shapefiles-r
+* https://r-graph-gallery.com/168-load-a-shape-file-into-r.html
+* https://rpubs.com/huanfaChen/ggplotShapefile
