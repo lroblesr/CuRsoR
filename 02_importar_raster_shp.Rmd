@@ -13,7 +13,7 @@ knitr::opts_chunk$set(echo = T, warning = F, message = F, eval = T)
 
 Cargamos el paquete raster, esto permite
 ```{r loadpkg}
-pacman::p_load(raster, rgdal, tidyverse, rasterVis, sf)
+pacman::p_load(raster, rgdal, tidyverse, rasterVis, sf, rgeos, mapview, leaflet)
 ```
 
 ## Cambiar directorio de trabajo
@@ -43,8 +43,13 @@ Se puede verificar la lista de objetos en la consola de R usando la función `r 
 class(shp_paises)
 names(shp_paises)
 str(shp_paises)
-View(shp_paises)
-View(shp_paises@data)
+summary(shp_paises)
+object.size(shp_paises)
+nrow(shp_paises)
+ncol(shp_paises)
+dim(shp_paises)
+# View(shp_paises)
+# View(shp_paises@data)
 ```
 
 Para su visualización, se puede utilizar la función *plot*.
@@ -61,7 +66,7 @@ proj4string(shp_peru)
 crs(shp_peru)
 ```
 
-También se puede usar la función `r readOGR()` del paquete **rgdal** de la forma:
+También se puede usar la función *readOGR* del paquete **rgdal** de la forma:
 
 ```{r readshprgdal}
 shp_lima <- 'inputs/shape/Lima/lima_distritos.shp' %>%
@@ -71,7 +76,7 @@ plot(shp_lima)
 Se puede agregar argumentos extras que permite mejorar la visualización del plot
 
 ```{r plotSHP_args}
-plot(shp, col = "#f2efef", bg = "skyblue", lwd = 0.25, border = 1,
+plot(shp_lima, col = "#f2efef", bg = "skyblue", lwd = 0.25, border = 1,
     main = "Departamento de Lima", xlab = "Longitud", ylab = "Latitud")
 axis(1)
 axis(2)
@@ -89,10 +94,16 @@ plot(shp_lima, add = T)
 
 Por otra parte, también se puede usar el paquete **sf**
 
-
 ```{r sf}
 shp_lima <- st_read("inputs/shape/Lima/lima_distritos.shp")
 plot(shp_lima)
+# st_crs(shp_lima)
+```
+
+```{r projeccion}
+crs_data <- rgdal::make_EPSG() # Lista de todas las proyecciones
+head(crs_data)
+# View(crs_data) # Visualizar lista de proyecciones
 ```
 
 ## Tarea
@@ -100,9 +111,118 @@ Revisar las siguiente función:
 
 * *readShapePoly()* del paquete **maptools**
 
+## Raster
+
+Se usa la función *gp* para facilitar la visualización de los datos raster [Ver Fuente](https://mgimond.github.io/Spatial/index.html)
+
+```{r echo=FALSE}
+gp <- function(sg, nr=1, sfmt="%02.0f", fnts = 2.1){
+  library(ggplot2)
+  library(scales)
+  library(reshape2)
+  r.df = as.data.frame(cbind(xyFromCell(sg,1:ncell(sg)),getValues(sg)))
+  plotData = melt(r.df, id=c("x","y"))
+  ggplot(aes(x = x, y = y), data = plotData, environment = environment()) +
+    geom_tile(aes(fill = value)) + facet_wrap(~ variable, nrow=nr) +
+    scale_colour_brewer(palette="Blues") +
+    theme(strip.text.x = element_text(size=9, family="mono", face="bold"),
+          legend.position = "none",
+          axis.text=element_text(size=7),
+          axis.title=element_text(size=8) ) +
+    coord_equal() + geom_text(aes(label=sprintf(fmt=sfmt, value)), colour='white',size=fnts)
+}
+```
+
+Se crea un dato raster de 5x5 con valores del 1 al 25
+
+```{r raster}
+r <- raster(ncol = 5, nrow = 5, xmn = 0, xmx = 100, ymn = 0, ymx = 100)
+projection(r) <- "+proj=utm +zone=18 +datum=WGS84 +units=m +no_defs"
+values(r) <- seq(1:ncell(r))
+```
+
+para visualizar nuevamente se usa el paquete *plot*
+
+```{r rasterplot, fig.width=4, fig.height=4, fig.cap="Visualización del dato raster"}
+plot(r, main='Dato raster de 25 celdas')
+```
+
+Al emplear la función *gp* se observa los valores de cada celda.
+
+```{r rasterplotgp, fig.width=3, fig.height=3, fig.cap="Visualización de los elementos del dato raster"}
+gp(r)
+```
+
+## operaciones y funciones
+
+Las operaciones y funciones locales se aplican a cada celda individual y solo involucran aquellas celdas que comparten la misma ubicación.
+
+```{r stackraster, fig.cap = "Ejemplo de una operación local donde  `output=(2 * raster + 1)`.", fig.width=5, fig.height=3}
+l1 <- r * 2 + 1   # Apply basic operations to r, assign output to l1
+sg = stack(r,l1)
+names(sg) = c("raster", "output")
+gp(sg,1)
+```
+
+Más de un raster puede participar en una operación local. Por ejemplo, se pueden sumar dos rasters (es decir, cada uno de los píxeles superpuestos) para generar un nuevo raster.
+
+```{r suma, fig.cap = "Ejemplo de una suma `output=(R1+R2)`.", fig.width=7, fig.height=3}
+l2 <- r - r + runif(length(r), 0,10)   # Apply basic operations to r, assign output to l1
+l3 <- r + l2
+sg = stack(r,l2,l3)
+names(sg) = c("R1","R2", "output")
+gp(sg,1)
+```
+Tenga en cuenta cómo cada salida de celda solo involucra celdas de raster de entrada que comparten la misma ubicación exacta
+
+### Combinación de operaciones
+
+Tanto la comparación como las operaciones booleanas se pueden combinar en una sola expresión. Por ejemplo, es posible que deseemos encontrar ubicaciones (celdas) que satisfagan los requisitos de dos capas de trama diferentes: p. `0<r1<4` y `r2>0`. Para satisfacer el primer requisito, podemos escribir la expresión como `(r1>0) y (r1<4)`. Ambas comparaciones (delimitadas por paréntesis) devuelven un `0` (falso) o un `1` (verdadero). El ampersand, `&`, es un operador booleano que verifica que ambas condiciones se cumplen y devuelven un 1 si es así o un 0 si no. Esta expresión se combina con otra comparación utilizando otro operador ampersand que evalúa el criterio R2>0. La expresión amalgamada es, por lo tanto, `(R1>0) y (R1<4)) y (R2>0)`.
+
+```{r logico, fig.height=2, fig.width=5, fig.cap = "Salida de la operación ((R1&gt;0) &amp; (R1&lt;4)) &amp; (R2&gt;0). Un valor de 1 en el raster de salida indica que la condición es verdadera y un valor de 0 indica que la condición es falsa."}
+ras1 <- raster(ncol=3, nrow=3, xmn=0, xmx=100, ymn=0, ymx=100)
+ras2 <- ras1
+ras.out <- ras1
+projection(r) <- "+proj=utm +zone=19 +datum=NAD83"
+set.seed(pi)
+values(ras1) <- round(runif(length(ras1),-5,5))
+set.seed(pi*2)
+values(ras2) <- round(runif(length(ras2),-5,5))
+ras.out <- ((ras1 > 0) & (ras1 < 4)) & (ras2 > 0)
+sg <- stack(ras1,ras2,ras.out)
+names(sg) <- c("R1","R2", "output")
+gp(sg,1, sfmt="%2.0f", fnts=4)
+```
+
+## Plot RGB
+
+```{r plotRGB}
+r <- raster(system.file("external/test.grd", package = "raster"))
+x <- RGB(r)
+# par(mfrow=c(1,2))
+plot(x, col = gray(0:9 / 10))
+plotRGB(x)
+# summary(r, maxsamp = ncell(r))
+# maxsamp: fuerza a que se calcule a todos las celdas utilizamos
+```
+
+<!-- mapView() -->
+
+<!-- LC08_L1TP_002069_20130901_20170502_01_T1 -->
+
+## Tarea
+Revisar sobre los paquetes:
+
+* rgeos
+* terra
 
 ## Referencias
 
 * https://www.neonscience.org/resources/learning-hub/tutorials/dc-open-shapefiles-r
 * https://r-graph-gallery.com/168-load-a-shape-file-into-r.html
 * https://rpubs.com/huanfaChen/ggplotShapefile
+* https://bookdown.org/ndphillips/YaRrr/arranging-plots-with-parmfrow-and-layout.html
+* https://bookdown.org/yihui/rmarkdown-cookbook/
+* https://rpubs.com/NataliaMZ/
+
+<!-- 411284 -->
